@@ -52,11 +52,13 @@ jobs:
       - name: Determine tag
         id: vars
         shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="${{ inputs.tag }}"
+            TAG="$INPUT_TAG"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "release_name=zgw-token-introspection $TAG" >> $GITHUB_OUTPUT
@@ -71,17 +73,17 @@ jobs:
         if: ${{ steps.vars.outputs.tag != '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.vars.outputs.tag }}
+          TITLE: ${{ steps.vars.outputs.release_name }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
-          tag="${{ steps.vars.outputs.tag }}"
-          title="${{ steps.vars.outputs.release_name }}"
-
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "dist/zgw-token-introspection.jar" --clobber
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "dist/zgw-token-introspection.jar" --clobber
           else
-            gh release create "$tag" "dist/zgw-token-introspection.jar" \
-              --title "$title" \
-              --notes "Automated release $tag" \
-              --target "$GITHUB_SHA"
+            gh release create "$TAG" "dist/zgw-token-introspection.jar" \
+              --title "$TITLE" \
+              --notes "Automated release $TAG" \
+              --target "$TARGET_SHA"
           fi
 
 
