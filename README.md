@@ -4,7 +4,7 @@ This provider adds ZGW token verification and parsing to Keycloak. It exposes a 
 
 ## Supported Keycloak version
 
-This provider is built against and supported on **Keycloak 26.7.3**. The JAR compiles against the Keycloak server SPI, so it must be deployed into a Keycloak 26.x server — do not drop it into a 24.x (or older) server, as the SPI it links against is not present there.
+This provider is built against and supported on **Keycloak 26.7.3**. Because it compiles against the Keycloak server SPI, deploy it only into a supported Keycloak 26.x server; Keycloak 24.x and older are unsupported.
 
 ## Overview
 
