@@ -38,6 +38,7 @@ public class CustomJwtIntrospectionProvider implements RealmResourceProvider {
 
     private static final Logger log = Logger.getLogger(CustomJwtIntrospectionProvider.class);
     private static final String CLIENT_ID_CLAIM = "client_id";
+    private static final String RSIN_CLAIM = "rsin";
     
     private final KeycloakSession session;
 
@@ -73,7 +74,7 @@ public class CustomJwtIntrospectionProvider implements RealmResourceProvider {
     /**
      * Validates a custom JWT token and returns token information.
      */
-    private Map<String, Object> validateCustomJwt(String rawToken) {
+    Map<String, Object> validateCustomJwt(String rawToken) {
         try {
             // Step 1: Parse the JWT token
             JWSInput jwsInput = parseJwtToken(rawToken);
@@ -93,9 +94,19 @@ public class CustomJwtIntrospectionProvider implements RealmResourceProvider {
 
             // Step 3: Find the client in the current realm
             RealmModel realm = session.getContext().getRealm();
+            if (!realm.isEnabled()) {
+                log.debug("Realm is disabled");
+                return createInactiveTokenResponse();
+            }
+
             ClientModel client = realm.getClientByClientId(tokenClientId);
             if (client == null) {
                 log.debugf("Client with ID '%s' not found in realm", tokenClientId);
+                return createInactiveTokenResponse();
+            }
+
+            if (!client.isEnabled()) {
+                log.debugf("Client '%s' is disabled", tokenClientId);
                 return createInactiveTokenResponse();
             }
 
@@ -109,6 +120,16 @@ public class CustomJwtIntrospectionProvider implements RealmResourceProvider {
             // Step 5: Verify the JWT token signature and claims
             if (!verifyJwtToken(rawToken, jwsInput, clientSecret, token)) {
                 log.debugf("JWT token verification failed for client '%s'", tokenClientId);
+                return createInactiveTokenResponse();
+            }
+
+            if (!isIssuedAfterNotBefore(token, realm, client)) {
+                log.debugf("JWT token for client '%s' was issued before the not-before policy", tokenClientId);
+                return createInactiveTokenResponse();
+            }
+
+            if (!hasRsinMapper(client)) {
+                log.warnf("No hardcoded '%s' claim mapper configured for client '%s'", RSIN_CLAIM, tokenClientId);
                 return createInactiveTokenResponse();
             }
 
@@ -185,6 +206,25 @@ public class CustomJwtIntrospectionProvider implements RealmResourceProvider {
             log.debugf("Unexpected exception during JWT verification: %s", e.getMessage());
             return false;
         }
+    }
+
+    private boolean isIssuedAfterNotBefore(JsonWebToken token, RealmModel realm, ClientModel client) {
+        int notBefore = Math.max(realm.getNotBefore(), client.getNotBefore());
+        if (notBefore <= 0) {
+            return true;
+        }
+        Long issuedAt = token.getIat();
+        return issuedAt != null && issuedAt >= notBefore;
+    }
+
+    private boolean hasRsinMapper(ClientModel client) {
+        return client.getProtocolMappersStream()
+            .filter(this::isOidcHardcodedClaimMapper)
+            .map(ProtocolMapperModel::getConfig)
+            .anyMatch(cfg -> cfg != null
+                && RSIN_CLAIM.equals(cfg.get("claim.name"))
+                && cfg.get("claim.value") != null
+                && !cfg.get("claim.value").isBlank());
     }
 
     /**

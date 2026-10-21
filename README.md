@@ -2,6 +2,8 @@
 
 This provider adds ZGW token verification and parsing to Keycloak. It exposes a realm endpoint that validates HS256-signed ZGW JWTs by looking up the token's `client_id` in Keycloak and verifying the signature with that client's secret, returning an OAuth2 token introspection response.
 
+> **Note:** This provider exists for backwards compatibility with the self-signed JWT tokens described in the VNG ZGW standard. For new integrations we recommend OAuth2 access tokens issued by your identity provider.
+
 ## Supported Keycloak version
 
 This provider is built against and supported on **Keycloak 26.7.5**. Because it compiles against the Keycloak server SPI, deploy it only into a supported Keycloak 26.x server; Keycloak 24.x and older are unsupported.
@@ -12,6 +14,9 @@ Introspection endpoint:
 - Requires a `client_id` claim
 - Resolves the Keycloak client by `client_id` and verifies the HS256 signature using that client's secret stored in Keycloak (no external secret store)
 - Includes claims from any OIDC Hardcoded Claim protocol mappers configured in keycloak, on the client
+- Requires the realm and the client to be enabled
+- Requires an OIDC Hardcoded Claim mapper for `rsin` on the client; tokens for clients without one are inactive, and the token's own `rsin` is always replaced by the mapper value
+- Rejects tokens whose `iat` is before the realm or client not-before policy (Revoke in the admin console); once a not-before is set, `iat` is required. Clients sign their own tokens and set `iat` themselves, so a not-before only invalidates tokens already issued; if the client secret has leaked, disable the client or rotate its secret
 - Enforces token activity (validates `exp`/`nbf` when present)
 - Tokens without `exp` claim will be treated as active, but warning will be logged in keycloak. It's recommended to use short lived tokens.
 
@@ -51,6 +56,7 @@ The provider expects JWT tokens generated with the following characteristics:
 - **Algorithm**: HS256
 - **Secret**: Client secret from Keycloak
 - **Required claim**: `client_id` (must match a client in the realm)
+- **Issued at**: `iat` is required once a realm or client not-before policy is set
 - **Temporal**: Token must be active; `exp` is recommended
 
 
@@ -70,6 +76,7 @@ On success you will receive `{ "active": true, ... }` and claim from token; othe
 
 - Check Keycloak logs for detailed error messages
 - Ensure the client exists in Keycloak and has a secret configured
+- Ensure the client and realm are enabled and the client has a Hardcoded Claim mapper for `rsin`
 - Verify the token is properly formatted and not expired
 - Confirm the signing algorithm is HS256
 - Make sure the client secret matches what was used to sign the token
